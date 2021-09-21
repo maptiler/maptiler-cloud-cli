@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "maptiler-cloud-cli"
+version = "1.0"
+description = "CLI utility for uploading tiles to MapTiler Cloud"
+authors = ["MapTiler <developers@maptiler.com>"]
+
+[tool.poetry.scripts]
+maptiler-cloud = "maptiler_cloud_cli.cli:cli"
+
+[tool.poetry.dependencies]
+python = ">=3.6"
+click = "^8.0.1"
+requests = "^2.26.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
+requests-mock = "^1.9.3"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
