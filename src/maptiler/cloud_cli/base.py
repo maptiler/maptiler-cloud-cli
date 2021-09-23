@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import urllib.parse
 import re
 
@@ -134,7 +133,3 @@ def upload_file(file: Path, url: str):
                 chunk = None
             else:
                 response.raise_for_status()
-
-
-if __name__ == "__main__":
-    cli()
