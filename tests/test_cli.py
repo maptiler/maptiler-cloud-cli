@@ -5,7 +5,7 @@ import requests
 
 from click.testing import CliRunner
 
-from maptiler.cloud_cli.cli import ingest_tiles, URLGenerator
+from maptiler.cloud_cli.base import ingest_tiles, URLGenerator
 
 
 class MockedCliRunner(CliRunner):

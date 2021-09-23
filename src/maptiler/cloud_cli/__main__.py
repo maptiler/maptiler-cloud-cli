@@ -1,3 +1,3 @@
-from src.maptiler.cloud_cli.cli import cli
+from maptiler.cloud_cli import cli
 
 cli()
