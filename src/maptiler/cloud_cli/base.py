@@ -21,7 +21,7 @@ class URLGenerator:
         return urllib.parse.urljoin(self.base_url, f"ingest/{ingest_id}")
 
     def tiles_process(self, ingest_id: UUID) -> str:
-        return urllib.parse.urljoin(self.tiles_ingest_detail(ingest_id), "/process")
+        return f"{self.tiles_ingest_detail(ingest_id)}/process"
 
     def tiles_ingest_new(self, document_id: UUID) -> str:
         return urllib.parse.urljoin(self.base_url, f"{document_id}/ingest")
