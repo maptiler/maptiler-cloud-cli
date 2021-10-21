@@ -3,7 +3,7 @@
 ## Installation
 
 ```shell
-pip install maptiler-upload-cli
+pip install maptiler-cloud-cli
 ```
 
 ## Authorization
