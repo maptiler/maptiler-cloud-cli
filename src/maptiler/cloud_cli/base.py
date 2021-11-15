@@ -96,7 +96,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
             click.echo(f"\t message: {error['message']}")
     elif response_data["status"] == "completed":
         click.echo("Finished")
-        click.echo(ingest_id)
+        click.echo(response_data["document_id"])
 
 
 def upload_file(file: Path, url: str):
