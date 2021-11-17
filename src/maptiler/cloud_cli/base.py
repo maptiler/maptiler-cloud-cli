@@ -74,7 +74,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
     upload_file(container, upload_url)
 
     click.echo("Processing")
-    http.get(process_url)
+    http.post(process_url)
     response = http.get(task_url)
     response.raise_for_status()
     response_data = response.json()
