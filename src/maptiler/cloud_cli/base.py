@@ -58,7 +58,6 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
     response = http.post(
         request_url,
         json={
-            "media_type": "application/vnd.sqlite3",
             "size": container.stat().st_size,
             "filename": container.name,
         },
