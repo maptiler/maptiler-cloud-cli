@@ -80,7 +80,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
 
     delay = 1
     while (
-        response_data["state"] != "failed" and response_data["state"] != "completed"
+        response_data["state"] not in {"completed", "canceled", "failed"}
     ):
         sleep(delay)
         if delay < 60:
@@ -89,13 +89,15 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
         response.raise_for_status()
         response_data = response.json()
 
-    if response_data["state"] == "failed":
+    if response_data["state"] == "completed":
+        click.echo("Finished")
+        click.echo(response_data["document_id"])
+    elif response_data["state"] == "canceled":
+        click.echo("Canceled")
+    elif response_data["state"] == "failed":
         click.echo("Ingest failed, errors:")
         for error in response_data["errors"]:
             click.echo(f"\t message: {error['message']}")
-    elif response_data["state"] == "completed":
-        click.echo("Finished")
-        click.echo(response_data["document_id"])
 
 
 def upload_file(file: Path, url: str):
