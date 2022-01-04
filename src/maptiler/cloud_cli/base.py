@@ -9,6 +9,8 @@ from typing import Optional
 import click
 import requests
 
+from requests import Response, HTTPError
+
 
 class URLGenerator:
     def __init__(self, base_url: str):
@@ -62,7 +64,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
             "filename": container.name,
         },
     )
-    response.raise_for_status()
+    handle_response_errors(response)
     response_data = response.json()
     upload_url = response_data["upload_url"]
     ingest_id = response_data["id"]
@@ -75,7 +77,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
     click.echo("Processing")
     http.post(process_url)
     response = http.get(task_url)
-    response.raise_for_status()
+    handle_response_errors(response)
     response_data = response.json()
 
     delay = 1
@@ -86,7 +88,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
         if delay < 60:
             delay += 1
         response = http.get(task_url)
-        response.raise_for_status()
+        handle_response_errors(response)
         response_data = response.json()
 
     if response_data["state"] == "completed":
@@ -134,3 +136,11 @@ def upload_file(file: Path, url: str):
                 chunk = None
             else:
                 response.raise_for_status()
+
+def handle_response_errors(response: Response):
+    try:
+        response.raise_for_status()
+    except HTTPError as error:
+        print(error)
+        print(error.response.json()["errors"][0]["msg"])
+        exit()
