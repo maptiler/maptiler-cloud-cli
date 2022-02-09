@@ -44,7 +44,7 @@ The command will print out the tileset ID on the last line.
 > :information_source: The GeoPackage must have a tile matrix set. Read the
 > [Vector tiles generating (basic)](https://documentation.maptiler.com/hc/en-us/articles/360020887038-Vector-tiles-generating-basic-)
 > article to learn how to create a valid GeoPackage or MBTiles from the
-> [MapTiler desktop application](https://www.maptiler.com/desktop/).
+> [MapTiler Desktop application](https://www.maptiler.com/desktop/).
 
 > :bulb: If you reach the tileset limit for your account, you will not be able to upload new tilesets, and you will get an error.
 > Check out our [plans](https://www.maptiler.com/cloud/plans/) to increase the number of tilesets you can have.
