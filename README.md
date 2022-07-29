@@ -1,4 +1,5 @@
 # MapTiler Cloud CLI
+This tool allows you [upload map data](https://documentation.maptiler.com/hc/en-us/articles/4408129705745-How-to-upload-MBTiles-or-GeoPackage-into-MapTiler-Cloud-using-API) into [MapTiler Cloud](https://www.maptiler.com/cloud/geodata-hosting/) using [upload API](https://docs.maptiler.com/cloud/admin-api/tileset_ingest/).
 
 ## Requirements
 
