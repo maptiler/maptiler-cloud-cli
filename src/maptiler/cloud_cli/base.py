@@ -1,15 +1,13 @@
-import urllib.parse
 import re
-
-from uuid import UUID
+import urllib.parse
 from pathlib import Path
 from time import sleep
 from typing import Optional
+from uuid import UUID
 
 import click
 import requests
-
-from requests import Response, HTTPError
+from requests import HTTPError, Response
 
 
 class URLGenerator:
@@ -142,5 +140,5 @@ def handle_response_errors(response: Response):
         response.raise_for_status()
     except HTTPError as error:
         print(error)
-        print(error.response.json()["errors"][0]["msg"])
+        print(error.response.json()["errors"][0]["message"])
         exit()
