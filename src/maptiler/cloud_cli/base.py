@@ -10,8 +10,6 @@ import requests
 from requests import HTTPError, Response
 
 MAX_RETRIES = 5
-retries = 0
-
 
 class URLGenerator:
     def __init__(self, base_url: str):
@@ -143,17 +141,18 @@ def handle_response_errors(response: Response):
         exit()
 
 def task_request(http: requests.Session, url: str) -> dict:
-    try:
-        response = http.get(url)
-        handle_response_errors(response)
-        response_data = response.json()
-        retries = 0
-        return response_data
-    except ConnectionResetError:
-        print("Connection reset by peer, retrying")
-        if retries <= MAX_RETRIES:
+    retries = 0
+    while True:
+        try:
+            response = http.get(url)
+        except ConnectionResetError:
+            click.echo("Connection reset by peer, retrying...")
             retries += 1
-            sleep(3 * retries)
-            task_request(http, url)
-        else:
-            raise
+            if retries <= MAX_RETRIES:
+                sleep(3 * retries)
+                continue
+            else:
+                raise
+
+        handle_response_errors(response)
+        return response.json()
