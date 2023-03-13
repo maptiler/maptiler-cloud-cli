@@ -9,6 +9,7 @@ import click
 import requests
 from requests import HTTPError, Response
 
+MAX_RETRIES = 5
 
 class URLGenerator:
     def __init__(self, base_url: str):
@@ -74,9 +75,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
 
     click.echo("Processing")
     http.post(process_url)
-    response = http.get(task_url)
-    handle_response_errors(response)
-    response_data = response.json()
+    response_data = task_request(http, task_url)
 
     delay = 1
     while (
@@ -85,9 +84,7 @@ def ingest_tiles(context: click.Context, document_id: Optional[UUID], container:
         sleep(delay)
         if delay < 60:
             delay += 1
-        response = http.get(task_url)
-        handle_response_errors(response)
-        response_data = response.json()
+        response_data = task_request(http, task_url)
 
     if response_data["state"] == "completed":
         click.echo("Finished")
@@ -142,3 +139,20 @@ def handle_response_errors(response: Response):
         print(error)
         print(error.response.json()["errors"][0]["message"])
         exit()
+
+def task_request(http: requests.Session, url: str) -> dict:
+    retries = 0
+    while True:
+        try:
+            response = http.get(url)
+        except ConnectionResetError:
+            click.echo("Connection reset by peer, retrying...")
+            retries += 1
+            if retries <= MAX_RETRIES:
+                sleep(3 * retries)
+                continue
+            else:
+                raise
+
+        handle_response_errors(response)
+        return response.json()
