@@ -145,7 +145,7 @@ def task_request(http: requests.Session, url: str) -> dict:
     while True:
         try:
             response = http.get(url)
-        except ConnectionResetError:
+        except requests.exceptions.ConnectionError:
             click.echo("Connection reset by peer, retrying...")
             retries += 1
             if retries <= MAX_RETRIES:
