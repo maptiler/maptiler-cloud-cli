@@ -284,7 +284,7 @@ def upload_to_s3(file: Path, upload: S3Upload) -> S3UploadResult:
 
             response = http.request(
                 method="PUT",
-                url=part.url.replace("minio:9000", "localhost:9000"),
+                url=part.url,
                 headers={"Content-Length": str(length)},
                 body=read(length),
             )
