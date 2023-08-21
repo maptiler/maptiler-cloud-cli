@@ -3,7 +3,7 @@ This tool allows you [upload map data](https://documentation.maptiler.com/hc/en-
 
 ## Requirements
 
-- Python *version >= 3.6*
+- Python *version >= 3.8*
 - pip
 - venv
 
