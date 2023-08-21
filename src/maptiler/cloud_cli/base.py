@@ -82,6 +82,16 @@ class Client:
         self.session.headers.update({"Authorization": f"Token {token}"})
         self.session.mount(self.base_url, HTTPAdapter(max_retries=retries))
 
+    def check(self, response: requests.Response):
+        if response.ok:
+            return
+        if 400 <= response.status_code < 500:
+            data = response.json()
+            errors = [Error(message=item["message"]) for item in data["errors"]]
+        else:
+            errors = [Error("Internal server error")]
+        raise ClientError(response.status_code, errors)
+
     def ingest_response(self, data: dict) -> IngestResponse:
         if data.get("upload") is None:
             upload_url = data.get("upload_url")
@@ -115,19 +125,6 @@ class Client:
             errors=errors,
         )
 
-    def request(self, *args, **kwargs) -> requests.Response:
-        response = self.session.request(*args, **kwargs)  # XXX Weird.
-
-        if 400 <= response.status_code < 500:
-            data = response.json()
-            raise ClientError(
-                status_code=response.status_code,
-                errors=[Error(message=item["message"]) for item in data["errors"]],
-            )
-
-        response.raise_for_status()
-        return response
-
     def create_ingest(
         self, filename: str, size: int, document_id: Optional[UUID]
     ) -> IngestResponse:
@@ -136,9 +133,8 @@ class Client:
         else:
             url = urljoin(self.base_url, f"/v1/tiles/{document_id}/ingest")
 
-        response = self.request(
-            method="POST",
-            url=url,
+        response = self.session.post(
+            url,
             json={
                 "filename": filename,
                 "size": size,
@@ -148,12 +144,14 @@ class Client:
                 ],
             },
         )
+        self.check(response)
         return self.ingest_response(response.json())
 
     def ingest(self, ingest_id: UUID) -> IngestResponse:
-        response = self.request(
-            method="GET", url=urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}")
+        response = self.session.get(
+            urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}")
         )
+        self.check(response)
         return self.ingest_response(response.json())
 
     def process_ingest(
@@ -175,11 +173,11 @@ class Client:
                 }
             }
 
-        response = self.request(
-            method="POST",
-            url=urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}/process"),
+        response = self.session.post(
+            urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}/process"),
             json=json,
         )
+        self.check(response)
         return self.ingest_response(response.json())
 
 
