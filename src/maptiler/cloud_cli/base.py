@@ -1,40 +1,194 @@
+import io
 import re
-import urllib.parse
+from dataclasses import dataclass
+from operator import attrgetter
 from pathlib import Path
 from time import sleep
-from typing import Optional
+from typing import Optional, Union
+from urllib.parse import urljoin
 from uuid import UUID
 
 import click
 import requests
-from requests import HTTPError, Response
+import urllib3
 
-MAX_RETRIES = 5
 
-class URLGenerator:
-    def __init__(self, base_url: str):
-        self.base_url = base_url
+@dataclass
+class Error:
+    message: str
 
-    def tiles_ingest(self) -> str:
-        return urllib.parse.urljoin(self.base_url, "ingest")
 
-    def tiles_ingest_detail(self, ingest_id: UUID) -> str:
-        return urllib.parse.urljoin(self.base_url, f"ingest/{ingest_id}")
+@dataclass
+class GoogleDriveUpload:
+    url: str
 
-    def tiles_process(self, ingest_id: UUID) -> str:
-        return f"{self.tiles_ingest_detail(ingest_id)}/process"
 
-    def tiles_ingest_new(self, document_id: UUID) -> str:
-        return urllib.parse.urljoin(self.base_url, f"{document_id}/ingest")
+@dataclass
+class S3UploadPart:
+    part_id: int
+    url: str
+
+
+@dataclass
+class S3Upload:
+    part_size: int
+    parts: list[S3UploadPart]
+
+
+@dataclass
+class S3UploadResultPart:
+    part_id: int
+    etag: str
+
+
+@dataclass
+class S3UploadResult:
+    parts: list[S3UploadResultPart]
+
+
+@dataclass
+class IngestResponse:
+    id: UUID
+    document_id: UUID
+    state: str
+    upload: Union[S3Upload, GoogleDriveUpload, None]
+    errors: list[Error]
+
+
+class ClientError(Exception):
+    status_code: int
+    errors: list[Error]
+
+    def __init__(self, status_code: int, errors: list[Error]):
+        self.status_code = status_code
+        self.errors = errors
+
+
+class Client:
+    base_url: str
+    session: requests.Session
+
+    def __init__(self, token: str, base_url: Optional[str] = None):
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
+        if base_url is None:
+            self.base_url = "https://service.maptiler.com"
+        else:
+            self.base_url = base_url.rstrip("/")
+
+        retries = Retry(total=10, backoff_factor=0.5)
+        self.session = requests.Session()
+        self.session.headers.update({"Authorization": f"Token {token}"})
+        self.session.mount(self.base_url, HTTPAdapter(max_retries=retries))
+
+    def ingest_response(self, data: dict) -> IngestResponse:
+        if data.get("upload") is None:
+            upload_url = data.get("upload_url")
+            if upload_url is not None:
+                upload = GoogleDriveUpload(url=upload_url)
+            else:
+                upload = None
+        elif data["upload"]["type"] == "s3_multipart":
+            upload = S3Upload(
+                part_size=data["upload"]["part_size"],
+                parts=[
+                    S3UploadPart(part_id=item["part_id"], url=item["url"])
+                    for item in data["upload"]["parts"]
+                ],
+            )
+        elif data["upload"]["type"] == "google_drive_resumable":
+            upload = GoogleDriveUpload(url=data["upload"]["url"])
+        else:
+            raise RuntimeError("Unknown upload type", data["upload"]["type"])
+
+        if data.get("errors"):
+            errors = [Error(item["message"]) for item in data["errors"]]
+        else:
+            errors = []
+
+        return IngestResponse(
+            id=UUID(data["id"]),
+            document_id=UUID(data["document_id"]),
+            state=data["state"],
+            upload=upload,
+            errors=errors,
+        )
+
+    def request(self, *args, **kwargs) -> requests.Response:
+        response = self.session.request(*args, **kwargs)  # XXX Weird.
+
+        if 400 <= response.status_code < 500:
+            data = response.json()
+            raise ClientError(
+                status_code=response.status_code,
+                errors=[Error(message=item["message"]) for item in data["errors"]],
+            )
+
+        response.raise_for_status()
+        return response
+
+    def create_ingest(
+        self, filename: str, size: int, document_id: Optional[UUID]
+    ) -> IngestResponse:
+        if document_id is None:
+            url = urljoin(self.base_url, "/v1/tiles/ingest")
+        else:
+            url = urljoin(self.base_url, f"/v1/tiles/{document_id}/ingest")
+
+        response = self.request(
+            method="POST",
+            url=url,
+            json={
+                "filename": filename,
+                "size": size,
+                "supported_upload_types": [
+                    "s3_multipart",
+                    "google_drive_resumable",
+                ],
+            },
+        )
+        return self.ingest_response(response.json())
+
+    def ingest(self, ingest_id: UUID) -> IngestResponse:
+        response = self.request(
+            method="GET", url=urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}")
+        )
+        return self.ingest_response(response.json())
+
+    def process_ingest(
+        self, ingest_id: UUID, upload_result: Optional[S3UploadResult]
+    ) -> IngestResponse:
+        if upload_result is None:
+            json = None
+        else:
+            json = {
+                "upload_result": {
+                    "type": "s3_multipart",
+                    "parts": [
+                        {
+                            "part_id": item.part_id,
+                            "etag": item.etag,
+                        }
+                        for item in upload_result.parts
+                    ],
+                }
+            }
+
+        response = self.request(
+            method="POST",
+            url=urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}/process"),
+            json=json,
+        )
+        return self.ingest_response(response.json())
 
 
 @click.group()
-@click.option("--token", envvar="MAPTILER_TOKEN", type=str, required=True)
+@click.option("--token", type=str, envvar="MAPTILER_TOKEN", required=True)
+@click.option("--base-url", type=str, hidden=True)
 @click.pass_context
-def cli(context: click.Context, token: str):
-    api_session = requests.Session()
-    api_session.headers.update({"Authorization": "Token {}".format(token)})
-    context.obj = {"api_session": api_session}
+def cli(context: click.Context, token: str, base_url: str):
+    context.obj = Client(token=token, base_url=base_url)
 
 
 @cli.group()
@@ -47,58 +201,105 @@ def tiles():
 @click.argument("container", type=Path)
 @click.pass_context
 def ingest_tiles(context: click.Context, document_id: Optional[UUID], container: Path):
-    url_generator = URLGenerator("https://service.maptiler.com/v1/tiles/")
-    http = context.obj["api_session"]
-
-    if document_id is not None:
-        request_url = url_generator.tiles_ingest_new(document_id)
-    else:
-        request_url = url_generator.tiles_ingest()
+    client: Client = context.obj
 
     click.echo("Starting")
-    response = http.post(
-        request_url,
-        json={
-            "size": container.stat().st_size,
-            "filename": container.name,
-        },
-    )
-    handle_response_errors(response)
-    response_data = response.json()
-    upload_url = response_data["upload_url"]
-    ingest_id = response_data["id"]
-    task_url = url_generator.tiles_ingest_detail(ingest_id)
-    process_url = url_generator.tiles_process(ingest_id)
+    try:
+        ingest = client.create_ingest(
+            filename=container.name,
+            size=container.stat().st_size,
+            document_id=document_id,
+        )
+    except ClientError as ex:
+        click.echo("Could not create ingest", err=True)
+        for error in ex.errors:
+            click.echo(error.message, err=True)
+        raise click.Abort()
 
     click.echo("Uploading")
-    upload_file(container, upload_url)
+    if isinstance(ingest.upload, S3Upload):
+        upload_result = upload_to_s3(container, ingest.upload)
+    elif isinstance(ingest.upload, GoogleDriveUpload):
+        upload_to_google_drive(container, ingest.upload.url)
+        upload_result = None
+    else:
+        raise RuntimeError
 
     click.echo("Processing")
-    http.post(process_url)
-    response_data = task_request(http, task_url)
+    try:
+        ingest = client.process_ingest(ingest.id, upload_result)
+    except ClientError as ex:
+        click.echo("Could not start processing", err=True)
+        for error in ex.errors:
+            click.echo(error.message, err=True)
+        raise click.Abort()
 
-    delay = 1
-    while (
-        response_data["state"] not in {"completed", "canceled", "failed"}
-    ):
+    delay = 5
+    while ingest.state not in {"completed", "canceled", "failed"}:
         sleep(delay)
         if delay < 60:
             delay += 1
-        response_data = task_request(http, task_url)
+        ingest = client.ingest(ingest.id)
 
-    if response_data["state"] == "completed":
+    if ingest.state == "completed":
         click.echo("Finished")
-        click.echo(response_data["document_id"])
-    elif response_data["state"] == "canceled":
+        click.echo(ingest.document_id)
+    elif ingest.state == "canceled":
         click.echo("Canceled")
-    elif response_data["state"] == "failed":
-        click.echo("Ingest failed, errors:")
-        for error in response_data["errors"]:
-            click.echo(f"\t message: {error['message']}")
+    elif ingest.state == "failed":
+        click.echo("Failed", err=True)
+        for error in ingest.errors:
+            click.echo(error.message, err=True)
+        raise click.Abort()
 
 
-def upload_file(file: Path, url: str):
-    http = requests.Session()
+def upload_to_s3(file: Path, upload: S3Upload) -> S3UploadResult:
+    from urllib3.util.retry import Retry
+
+    # The requests library does not work with body iterator.
+    http = urllib3.PoolManager(retries=Retry(total=5, backoff_factor=0.5))
+
+    parts = []
+    file_size = file.stat().st_size
+    buffer = memoryview(bytearray(8 * 1024 * 1024))
+
+    def read(length: int):
+        while length > 0:
+            if length >= len(buffer):
+                target = buffer
+            else:
+                target = buffer[:length]
+
+            num_read = fp.readinto(target)
+            yield target[:num_read]
+            length -= num_read
+
+    with file.open("rb") as fp:
+        for part in sorted(upload.parts, key=attrgetter("part_id")):
+            lower = (part.part_id - 1) * upload.part_size
+            upper = min(lower + upload.part_size, file_size)
+            length = upper - lower
+
+            fp.seek(lower)
+
+            response = http.request(
+                method="PUT",
+                url=part.url.replace("minio:9000", "localhost:9000"),
+                headers={"Content-Length": str(length)},
+                body=read(length),
+            )
+            if response.status >= 400:
+                raise RuntimeError(response.status, response.read())
+
+            parts.append(
+                S3UploadResultPart(part_id=part.part_id, etag=response.headers["ETag"])
+            )
+
+    return S3UploadResult(parts=parts)
+
+
+def upload_to_google_drive(file: Path, url: str):
+    session = requests.Session()
     file_size = file.stat().st_size
     chunk_size = 10 * 1024 * 1024
     with file.open("rb") as fp:
@@ -112,7 +313,7 @@ def upload_file(file: Path, url: str):
                 )
             else:
                 range = "bytes */{}".format(file_size)
-            response = http.put(url, data=chunk, headers={"Content-Range": range})
+            response = session.put(url, data=chunk, headers={"Content-Range": range})
             if response.status_code in {200, 201}:
                 return
             elif response.status_code == 308:
@@ -124,35 +325,10 @@ def upload_file(file: Path, url: str):
             elif response.status_code == 403 or response.status_code >= 500:
                 if retries > 5:
                     response.raise_for_status()
-                timeout = 2 ** retries
+                timeout = 2**retries
                 sleep(timeout)
                 retries += 1
                 offset = None
                 chunk = None
             else:
                 response.raise_for_status()
-
-def handle_response_errors(response: Response):
-    try:
-        response.raise_for_status()
-    except HTTPError as error:
-        print(error)
-        print(error.response.json()["errors"][0]["message"])
-        exit()
-
-def task_request(http: requests.Session, url: str) -> dict:
-    retries = 0
-    while True:
-        try:
-            response = http.get(url)
-        except requests.exceptions.ConnectionError:
-            click.echo("Connection reset by peer, retrying...")
-            retries += 1
-            if retries <= MAX_RETRIES:
-                sleep(3 * retries)
-                continue
-            else:
-                raise
-
-        handle_response_errors(response)
-        return response.json()
