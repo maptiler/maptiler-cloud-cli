@@ -157,26 +157,26 @@ class Client:
     def process_ingest(
         self, ingest_id: UUID, upload_result: Optional[S3UploadResult]
     ) -> IngestResponse:
+        url = urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}/process")
         if upload_result is None:
-            json = None
+            response = self.session.post(url)
         else:
-            json = {
-                "upload_result": {
-                    "type": "s3_multipart",
-                    "parts": [
-                        {
-                            "part_id": item.part_id,
-                            "etag": item.etag,
-                        }
-                        for item in upload_result.parts
-                    ],
-                }
-            }
+            response = self.session.post(
+                url,
+                json={
+                    "upload_result": {
+                        "type": "s3_multipart",
+                        "parts": [
+                            {
+                                "part_id": item.part_id,
+                                "etag": item.etag,
+                            }
+                            for item in upload_result.parts
+                        ],
+                    }
+                },
+            )
 
-        response = self.session.post(
-            urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}/process"),
-            json=json,
-        )
         self.check(response)
         return self.ingest_response(response.json())
 
