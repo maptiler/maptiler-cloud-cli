@@ -49,7 +49,7 @@ class S3UploadResult:
 @dataclass
 class IngestResponse:
     id: UUID
-    document_id: UUID
+    document_id: Optional[UUID]
     state: str
     upload: Union[S3Upload, GoogleDriveUpload, None]
     errors: list[Error]
@@ -117,9 +117,13 @@ class Client:
         else:
             errors = []
 
+        document_id = data.get("document_id")
+        if document_id is not None:
+            document_id = UUID(document_id)
+        
         return IngestResponse(
             id=UUID(data["id"]),
-            document_id=UUID(data["document_id"]),
+            document_id=document_id,
             state=data["state"],
             upload=upload,
             errors=errors,
