@@ -1,16 +1,22 @@
-[tool.poetry]
+[project]
 name = "maptiler-cloud-cli"
 version = "1.2.1"
 description = "CLI utility for MapTiler Cloud"
-authors = ["MapTiler <info@maptiler.com>"]
-packages = [{ include = "maptiler", from = "src" }]
+authors = [{name = "MapTiler Developers", email = "developers@maptiler.com"}]
 license = "MIT"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.urls]
 repository = "https://github.com/maptiler/maptiler-cloud-cli"
 documentation = "https://docs.maptiler.com/cloud/admin-api/"
-readme = "README.md"
 
-[tool.poetry.scripts]
+[project.scripts]
 maptiler-cloud = "maptiler.cloud_cli:cli"
+
+[tool.poetry]
+packages = [{ include = "maptiler", from = "src" }]
 
 [tool.poetry.dependencies]
 python = ">=3.8"
