@@ -2,10 +2,9 @@ import uuid
 
 import pytest
 import requests
-
 from click.testing import CliRunner
 
-from maptiler.cloud_cli.base import ingest_tiles, URLGenerator
+from maptiler.cloud_cli.base import URLGenerator, ingest_datasets
 
 
 class MockedCliRunner(CliRunner):
@@ -21,7 +20,7 @@ class TestUploadCLI:
     ingest_id = uuid.uuid4()
     document_id = uuid.uuid4()
     upload_url = "https://upload_to.foo"
-    url_generator = URLGenerator("https://service.maptiler.com/v1/tiles/")
+    url_generator = URLGenerator("https://service.maptiler.com/v1/datasets/")
 
     @pytest.fixture(scope="session")
     def cli_runner(self, requests_session):
@@ -63,15 +62,14 @@ class TestUploadCLI:
             )
             yield api_session
 
-    def test_success_ingest_no_document_id(self, cli_runner, requests_mock,
-                                           dummy_file):
+    def test_success_ingest_no_document_id(self, cli_runner, requests_mock, dummy_file):
         requests_mock.put(
             self.upload_url,
             text="ok",
             status_code=200,
         )
 
-        result = cli_runner.invoke(ingest_tiles, [dummy_file])
+        result = cli_runner.invoke(ingest_datasets, [dummy_file])
         assert result.exit_code == 0
 
     def test_success_upload_with_document_id(
@@ -84,6 +82,6 @@ class TestUploadCLI:
         )
 
         result = cli_runner.invoke(
-            ingest_tiles, [f"--document-id={self.document_id}", dummy_file]
+            ingest_datasets, [f"--document-id={self.document_id}", dummy_file]
         )
         assert result.exit_code == 0
