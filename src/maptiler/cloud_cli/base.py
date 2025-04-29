@@ -202,7 +202,11 @@ def tiles():
 @click.option("--document-id", type=UUID)
 @click.argument("container", type=Path)
 @click.pass_context
-def ingest_tiles(context: click.Context, document_id: Optional[UUID], container: Path):
+def ingest_datasets(
+    context: click.Context,
+    document_id: Optional[UUID],
+    container: Path,
+):
     client: Client = context.obj
 
     click.echo("Starting")
