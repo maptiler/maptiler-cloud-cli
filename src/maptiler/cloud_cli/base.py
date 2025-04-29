@@ -120,7 +120,7 @@ class Client:
         document_id = data.get("document_id")
         if document_id is not None:
             document_id = UUID(document_id)
-        
+
         return IngestResponse(
             id=UUID(data["id"]),
             document_id=document_id,
@@ -133,9 +133,9 @@ class Client:
         self, filename: str, size: int, document_id: Optional[UUID]
     ) -> IngestResponse:
         if document_id is None:
-            url = urljoin(self.base_url, "/v1/tiles/ingest")
+            url = urljoin(self.base_url, "/v1/datasets/ingest")
         else:
-            url = urljoin(self.base_url, f"/v1/tiles/{document_id}/ingest")
+            url = urljoin(self.base_url, f"/v1/datasets/{document_id}/ingest")
 
         response = self.session.post(
             url,
@@ -153,7 +153,7 @@ class Client:
 
     def ingest(self, ingest_id: UUID) -> IngestResponse:
         response = self.session.get(
-            urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}")
+            urljoin(self.base_url, f"/v1/datasets/ingest/{ingest_id}")
         )
         self.check(response)
         return self.ingest_response(response.json())
@@ -161,7 +161,7 @@ class Client:
     def process_ingest(
         self, ingest_id: UUID, upload_result: Optional[S3UploadResult]
     ) -> IngestResponse:
-        url = urljoin(self.base_url, f"/v1/tiles/ingest/{ingest_id}/process")
+        url = urljoin(self.base_url, f"/v1/datasets/ingest/{ingest_id}/process")
         if upload_result is None:
             response = self.session.post(url)
         else:
@@ -202,7 +202,11 @@ def tiles():
 @click.option("--document-id", type=UUID)
 @click.argument("container", type=Path)
 @click.pass_context
-def ingest_tiles(context: click.Context, document_id: Optional[UUID], container: Path):
+def ingest_datasets(
+    context: click.Context,
+    document_id: Optional[UUID],
+    container: Path,
+):
     client: Client = context.obj
 
     click.echo("Starting")
