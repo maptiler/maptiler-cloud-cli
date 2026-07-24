@@ -77,7 +77,11 @@ class Client:
         else:
             self.base_url = base_url.rstrip("/")
 
-        retries = Retry(total=10, backoff_factor=0.5)
+        retries = Retry(
+            total=10,
+            backoff_factor=0.5,
+            status_forcelist=[400, 408, 429, 500, 502, 503, 504],
+        )
         self.session = requests.Session()
         self.session.headers.update({"Authorization": f"Token {token}"})
         self.session.mount(self.base_url, HTTPAdapter(max_retries=retries))
@@ -263,7 +267,14 @@ def upload_to_s3(file: Path, upload: S3Upload) -> S3UploadResult:
     from urllib3.util.retry import Retry
 
     # The requests library does not work with body iterator.
-    http = urllib3.PoolManager(retries=Retry(total=5, backoff_factor=0.5))
+    http = urllib3.PoolManager(
+        retries=Retry(
+            total=5,
+            backoff_factor=0.5,
+            status_forcelist=[400, 408, 429, 500, 502, 503, 504],
+            raise_on_status=False,
+        )
+    )
 
     parts = []
     file_size = file.stat().st_size
