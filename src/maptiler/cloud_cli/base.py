@@ -1,4 +1,3 @@
-import io
 import re
 from dataclasses import dataclass
 from operator import attrgetter
@@ -262,23 +261,10 @@ def ingest_datasets(
 def upload_to_s3(file: Path, upload: S3Upload) -> S3UploadResult:
     from urllib3.util.retry import Retry
 
-    # The requests library does not work with body iterator.
     http = urllib3.PoolManager(retries=Retry(total=5, backoff_factor=0.5))
 
     parts = []
     file_size = file.stat().st_size
-    buffer = memoryview(bytearray(8 * 1024 * 1024))
-
-    def read(length: int):
-        while length > 0:
-            if length >= len(buffer):
-                target = buffer
-            else:
-                target = buffer[:length]
-
-            num_read = fp.readinto(target)
-            yield target[:num_read]
-            length -= num_read
 
     with file.open("rb") as fp:
         for part in sorted(upload.parts, key=attrgetter("part_id")):
@@ -292,7 +278,7 @@ def upload_to_s3(file: Path, upload: S3Upload) -> S3UploadResult:
                 method="PUT",
                 url=part.url,
                 headers={"Content-Length": str(length)},
-                body=read(length),
+                body=fp.read(length),
             )
             if response.status >= 400:
                 raise RuntimeError(response.status, response.read())
