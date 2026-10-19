@@ -54,6 +54,22 @@ class IngestResponse:
     errors: list[Error]
 
 
+@dataclass
+class Location:
+    lat: float
+    lon: float
+
+
+@dataclass
+class AutoGeoreferenceResponse:
+    id: UUID
+    input_document_id: UUID
+    output_document_id: Optional[UUID]
+    state: str
+    errors: list[Error]
+    progress: float
+
+
 class ClientError(Exception):
     status_code: int
     errors: list[Error]
@@ -182,6 +198,53 @@ class Client:
 
         self.check(response)
         return self.ingest_response(response.json())
+
+    def auto_georeference_response(self, data: dict) -> AutoGeoreferenceResponse:
+        if data.get("errors"):
+            errors = [Error(item["message"]) for item in data["errors"]]
+        else:
+            errors = []
+
+        output_document_id = data.get("output_document_id")
+        if output_document_id is not None:
+            output_document_id = UUID(output_document_id)
+
+        return AutoGeoreferenceResponse(
+            id=UUID(data["id"]),
+            input_document_id=UUID(data["input_document_id"]),
+            output_document_id=output_document_id,
+            state=data["state"],
+            errors=errors,
+            progress=data["progress"],
+        )
+
+    def create_auto_georeference(
+        self, document_id: UUID, location: Optional[Location]
+    ) -> AutoGeoreferenceResponse:
+        url = urljoin(self.base_url, f"/v1/datasets/{document_id}/auto_georeference")
+        if location is None:
+            # Without a location, the service reads it from the image EXIF.
+            response = self.session.post(url)
+        else:
+            response = self.session.post(
+                url, json={"location": {"lat": location.lat, "lon": location.lon}}
+            )
+        self.check(response)
+        return self.auto_georeference_response(response.json())
+
+    def auto_georeference(self, task_id: UUID) -> AutoGeoreferenceResponse:
+        response = self.session.get(
+            urljoin(self.base_url, f"/v1/datasets/auto_georeference/{task_id}")
+        )
+        self.check(response)
+        return self.auto_georeference_response(response.json())
+
+    def cancel_auto_georeference(self, task_id: UUID) -> AutoGeoreferenceResponse:
+        response = self.session.post(
+            urljoin(self.base_url, f"/v1/datasets/auto_georeference/{task_id}/cancel")
+        )
+        self.check(response)
+        return self.auto_georeference_response(response.json())
 
 
 @click.group()
@@ -324,3 +387,61 @@ def upload_to_google_drive(file: Path, url: str):
                 chunk = None
             else:
                 response.raise_for_status()
+
+
+@tiles.command("georeference")
+@click.option("--document-id", type=UUID, required=True)
+@click.option("--from-exif", is_flag=True)
+@click.option("--lat", type=click.FloatRange(-90, 90))
+@click.option("--lon", type=click.FloatRange(-180, 180))
+@click.pass_context
+def georeference(
+    context: click.Context,
+    document_id: UUID,
+    from_exif: bool,
+    lat: Optional[float],
+    lon: Optional[float],
+):
+    client: Client = context.obj
+
+    if from_exif:
+        if lat is not None or lon is not None:
+            raise click.UsageError("--from-exif cannot be combined with --lat/--lon")
+        location = None
+    else:
+        if lat is None or lon is None:
+            raise click.UsageError("Pass either --from-exif or both --lat and --lon")
+        location = Location(lat=lat, lon=lon)
+
+    click.echo("Starting")
+    try:
+        task = client.create_auto_georeference(document_id, location)
+    except ClientError as ex:
+        click.echo("Could not start georeferencing", err=True)
+        for error in ex.errors:
+            click.echo(error.message, err=True)
+        raise click.Abort()
+
+    click.echo("Processing")
+    try:
+        delay = 5
+        while task.state not in {"completed", "canceled", "failed"}:
+            sleep(delay)
+            if delay < 60:
+                delay += 1
+            task = client.auto_georeference(task.id)
+    except KeyboardInterrupt:
+        click.echo("Canceling", err=True)
+        client.cancel_auto_georeference(task.id)
+        raise click.Abort()
+
+    if task.state == "completed":
+        click.echo("Finished")
+        click.echo(task.output_document_id)
+    elif task.state == "canceled":
+        click.echo("Canceled")
+    elif task.state == "failed":
+        click.echo("Failed", err=True)
+        for error in task.errors:
+            click.echo(error.message, err=True)
+        raise click.Abort()
