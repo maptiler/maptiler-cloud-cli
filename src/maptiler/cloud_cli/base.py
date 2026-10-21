@@ -391,27 +391,24 @@ def upload_to_google_drive(file: Path, url: str):
 
 @tiles.command("georeference")
 @click.option("--document-id", type=UUID, required=True)
-@click.option("--from-exif", is_flag=True)
 @click.option("--lat", type=click.FloatRange(-90, 90))
 @click.option("--lon", type=click.FloatRange(-180, 180))
 @click.pass_context
 def georeference(
     context: click.Context,
     document_id: UUID,
-    from_exif: bool,
     lat: Optional[float],
     lon: Optional[float],
 ):
     client: Client = context.obj
 
-    if from_exif:
-        if lat is not None or lon is not None:
-            raise click.UsageError("--from-exif cannot be combined with --lat/--lon")
-        location = None
-    else:
-        if lat is None or lon is None:
-            raise click.UsageError("Pass either --from-exif or both --lat and --lon")
+    if (lat is None) != (lon is None):
+        raise click.UsageError("--lat and --lon must be passed together")
+
+    if lat is not None and lon is not None:
         location = Location(lat=lat, lon=lon)
+    else:
+        location = None
 
     click.echo("Starting")
     try:
