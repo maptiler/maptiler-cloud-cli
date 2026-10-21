@@ -223,7 +223,7 @@ class Client:
     ) -> AutoGeoreferenceResponse:
         url = urljoin(self.base_url, f"/v1/datasets/{document_id}/auto_georeference")
         if location is None:
-            # Without a location, the service reads it from the image EXIF.
+            # Without a location, the service reads it from the input file.
             response = self.session.post(url)
         else:
             response = self.session.post(
